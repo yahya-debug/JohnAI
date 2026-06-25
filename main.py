@@ -1,4 +1,5 @@
 import os
+import sys
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -24,37 +25,54 @@ def main():
     messages: list[types.Content] = [
         types.Content(role="user", parts=[types.Part(text=args.user_prompt)])
     ]
-    response = client.models.generate_content(
-        model='gemini-2.5-flash', \
-        contents=messages, 
-        config=types.GenerateContentConfig(
-            tools=[call_function.available_functions],
-            system_instruction=system_prompt,
-            temperature=0
-        ),
+    config = types.GenerateContentConfig(
+        tools=[call_function.available_functions],
+        system_instruction=system_prompt,
+        temperature=0
     )
 
+    for _ in range(20):
+        # Step 1: call the model with the current conversation history
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=messages,
+            config=config,
+        )
 
-    if response is None:
-        raise RuntimeError("failed API request")
-    if args.verbose:
-        print(f"User prompt: {args.user_prompt}\nPrompt tokens: {response.usage_metadata.prompt_token_count}\nResponse tokens: {response.usage_metadata.candidates_token_count}")
+        if response is None:
+            raise RuntimeError("failed API request")
+        if args.verbose:
+            print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}\nResponse tokens: {response.usage_metadata.candidates_token_count}")
 
-    if response.function_calls is not None:
+        # Step 2: append every candidate the model produced so it sees its own turns next iteration
+        for candidate in response.candidates:
+            messages.append(candidate.content)
+
+        # Step 3: no function calls means the model is done — print the answer and exit
+        if not response.function_calls:
+            print(response.text)
+            return
+
+        # Step 4: execute each requested function call and collect the result parts
         function_results = []
-        for function_call in response.function_calls:
-            result = call_function.call_function(function_call, verbose=args.verbose)
+        for fc in response.function_calls:
+            result = call_function.call_function(fc, verbose=args.verbose)
             if not result.parts:
-                raise Exception(f"call_function returned Content with empty parts for '{function_call.name}'")
+                raise Exception(f"call_function returned Content with empty parts for '{fc.name}'")
             if result.parts[0].function_response is None:
-                raise Exception(f"call_function returned no function_response for '{function_call.name}'")
+                raise Exception(f"call_function returned no function_response for '{fc.name}'")
             if result.parts[0].function_response.response is None:
-                raise Exception(f"function_response.response is None for '{function_call.name}'")
+                raise Exception(f"function_response.response is None for '{fc.name}'")
             function_results.append(result.parts[0])
             if args.verbose:
                 print(f"-> {result.parts[0].function_response.response}")
 
-    print(response.text)
+        # Step 5: feed the tool results back so the model sees them next iteration
+        messages.append(types.Content(role="user", parts=function_results))
+
+    # Step 6: exceeded the iteration limit without a final answer
+    print("Error: max iterations reached without a final response")
+    sys.exit(1)
     
 
 
