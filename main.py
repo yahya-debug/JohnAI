@@ -4,6 +4,7 @@ from google import genai
 from google.genai import types
 import argparse
 from prompts import system_prompt
+from functions import call_function
 
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -24,7 +25,13 @@ def main():
         types.Content(role="user", parts=[types.Part(text=args.user_prompt)])
     ]
     response = client.models.generate_content(
-        model='gemini-2.5-flash', contents=messages, config=types.GenerateContentConfig(system_instruction=system_prompt, temperature=0),
+        model='gemini-2.5-flash', \
+        contents=messages, 
+        config=types.GenerateContentConfig(
+            tools=[call_function.available_functions],
+            system_instruction=system_prompt,
+            temperature=0
+        ),
     )
 
 
@@ -32,6 +39,20 @@ def main():
         raise RuntimeError("failed API request")
     if args.verbose:
         print(f"User prompt: {args.user_prompt}\nPrompt tokens: {response.usage_metadata.prompt_token_count}\nResponse tokens: {response.usage_metadata.candidates_token_count}")
+
+    if response.function_calls is not None:
+        function_results = []
+        for function_call in response.function_calls:
+            result = call_function.call_function(function_call, verbose=args.verbose)
+            if not result.parts:
+                raise Exception(f"call_function returned Content with empty parts for '{function_call.name}'")
+            if result.parts[0].function_response is None:
+                raise Exception(f"call_function returned no function_response for '{function_call.name}'")
+            if result.parts[0].function_response.response is None:
+                raise Exception(f"function_response.response is None for '{function_call.name}'")
+            function_results.append(result.parts[0])
+            if args.verbose:
+                print(f"-> {result.parts[0].function_response.response}")
 
     print(response.text)
     

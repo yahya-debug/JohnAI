@@ -1,6 +1,7 @@
 from functions import get_files_info
 import os
 from config import MAX_CHARS
+from google.genai import types
 
 def get_file_content(working_directory: str, file_path: str) -> str:
     try:
@@ -28,3 +29,19 @@ def get_file_content(working_directory: str, file_path: str) -> str:
     except Exception as e:
         return f'Error: An unexpected error occurred while reading "{file_path}": {e}'
         
+
+
+schema_get_file_content = types.FunctionDeclaration(
+    name="get_file_content",
+    description="Reads and returns the content of a file at the given path relative to the working directory. Truncates large files.",
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "file_path": types.Schema(
+                type=types.Type.STRING,
+                description="Path to the file to read, relative to the working directory",
+            ),
+        },
+        required=["file_path"],
+    ),
+)
