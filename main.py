@@ -17,6 +17,7 @@ def main():
     
     parser = argparse.ArgumentParser(description="JohnAI")
     parser.add_argument("user_prompt", type=str, help="User Prompt")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     args = parser.parse_args()
 
     messages: list[types.Content] = [
@@ -29,7 +30,8 @@ def main():
 
     if response is None:
         raise RuntimeError("failed API request")
-    print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}\nResponse tokens: {response.usage_metadata.candidates_token_count}")
+    if args.verbose:
+        print(f"User prompt: {args.user_prompt}\nPrompt tokens: {response.usage_metadata.prompt_token_count}\nResponse tokens: {response.usage_metadata.candidates_token_count}")
 
     print(response.text)
     
